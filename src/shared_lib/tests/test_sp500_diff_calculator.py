@@ -1,9 +1,7 @@
 import unittest
 from pathlib import Path
-
 import pandas as pd
-
-from shared_lib.bll.pair_trading_fix_length_window_diff_calculator import PairTradingDiffCalculatorFixLengthWindow
+from shared_lib.bll.diff_calculator import DiffCalculatorSP500
 from shared_lib.models.enums import ResolutionLevel
 from shared_lib.models.time_series import TimeSeriesElement
 
@@ -31,15 +29,15 @@ class TestDiffCalculator(unittest.TestCase):
         return time_series
 
     def test_calculate_diff(self):
-        symbol1 = "DASH"
-        symbol2 = "ALGO"
+        symbol1 = "AAPL"
+        symbol2 = "ABNB"
 
         # Load data from CSV files
-        time_series1 = self.load_time_series(Path(__file__).parent / f"data/{symbol1}USDT.csv")
-        time_series2 = self.load_time_series(Path(__file__).parent / f"data/{symbol2}USDT.csv")
+        time_series1 = self.load_time_series(Path(__file__).parent / f"data/{symbol1}.csv")
+        time_series2 = self.load_time_series(Path(__file__).parent / f"data/{symbol2}.csv")
 
         # Initialize the calculator
-        calculator = PairTradingDiffCalculatorFixLengthWindow(symbol1, symbol2, resolution=ResolutionLevel.Hourly)
+        calculator = DiffCalculatorSP500(symbol1, symbol2, resolution=ResolutionLevel.Hourly)
 
         # Update the time series in the calculator
         calculator.update_time_series(time_series1, time_series2)
@@ -51,7 +49,7 @@ class TestDiffCalculator(unittest.TestCase):
         diff = calculator.calculate_diff(end_date_time)
 
         # Assert that the diff is within an expected range (for this example, we'll assume 0 is the expected value)
-        self.assertAlmostEqual(1.895, diff, places=4)
+        self.assertAlmostEqual(5.259246, diff, places=4)
 
     def test_generate_diff_equation_should_work(self):
         symbol1 = "DASH"
@@ -62,7 +60,7 @@ class TestDiffCalculator(unittest.TestCase):
         time_series2 = self.load_time_series(Path(__file__).parent / f"data/{symbol2}USDT.csv")
 
         # Initialize the calculator
-        calculator = PairTradingDiffCalculatorFixLengthWindow(symbol1, symbol2, resolution=ResolutionLevel.Hourly)
+        calculator = DiffCalculatorSP500(symbol1, symbol2, resolution=ResolutionLevel.Hourly)
 
         # Update the time series in the calculator
         calculator.update_time_series(time_series1, time_series2)

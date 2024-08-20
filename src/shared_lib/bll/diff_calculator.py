@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from collections import deque
 from datetime import datetime
 from typing import List, Optional, Tuple, Set
@@ -9,7 +10,8 @@ from shared_lib.models.time_series import TimeSeriesElement
 
 # Assuming TimeSeriesElement and ResolutionLevel are already defined
 
-class PairTradingDiffCalculatorFixLengthWindow:
+class PairTradingDiffCalculator(ABC):
+
     FixedWindowLength = 183  # Default length, unit: days
 
     def __init__(self, symbol1: str, symbol2: str, resolution: ResolutionLevel = ResolutionLevel.Daily):
@@ -103,23 +105,14 @@ class PairTradingDiffCalculatorFixLengthWindow:
             return False
         return True
 
+    @abstractmethod
     def calculate_window_length(self, resolution_level: ResolutionLevel) -> int:
-        if resolution_level == ResolutionLevel.Daily:
-            return self.FixedWindowLength
-        elif resolution_level == ResolutionLevel.Weekly:
-            return self.FixedWindowLength * 7
-        elif resolution_level == ResolutionLevel.Monthly:
-            return self.FixedWindowLength * 30
-        elif resolution_level == ResolutionLevel.Hourly:
-            return self.FixedWindowLength * 24
-        elif resolution_level == ResolutionLevel.Minute:
-            return self.FixedWindowLength * 24 * 60
-        elif resolution_level == ResolutionLevel.Second:
-            return self.FixedWindowLength * 24 * 60 * 60
-        elif resolution_level == ResolutionLevel.Tick:
-            return self.FixedWindowLength * 24 * 60 * 60 * 1000
-        else:
-            raise ValueError(f"Unsupported resolution level: {resolution_level}")
+        """
+        根据输入的级别，计算window的结果;
+        :param resolution_level:
+        :return:
+        """
+        pass
 
     def ols_regression(self, seriesA, seriesB):
         # 提取SeriesA和SeriesB
