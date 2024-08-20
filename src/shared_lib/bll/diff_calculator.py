@@ -1,28 +1,22 @@
 from abc import ABC, abstractmethod
-from collections import deque
-from datetime import datetime
-from typing import List, Optional, Tuple, Set
+from typing import List
+import pandas as pd
 import statsmodels.api as sm
 import numpy as np
+from pandas import DataFrame
 from shared_lib.models.enums import ResolutionLevel
 from shared_lib.models.time_series import TimeSeriesElement
 
 
 # Assuming TimeSeriesElement and ResolutionLevel are already defined
 
-class PairTradingDiffCalculator(ABC):
-
-    FixedWindowLength = 183  # Default length, unit: days
-
+class DiffCalculator(ABC):
     def __init__(self, symbol1: str, symbol2: str, resolution: ResolutionLevel = ResolutionLevel.Daily):
         self.symbol1 = symbol1
         self.symbol2 = symbol2
         self.resolution = resolution
-        self.FixedWindowLength = self.calculate_window_length(resolution)
-        self.time_series_queue1 = deque(maxlen=self.FixedWindowLength)
-        self.time_series_queue2 = deque(maxlen=self.FixedWindowLength)
-        self.time_series1: Set[TimeSeriesElement] = set()
-        self.time_series2: Set[TimeSeriesElement] = set()
+        self.FixedWindowLength = 0
+        self.df = DataFrame()
 
     def update_time_series(self, time_series1: List[TimeSeriesElement], time_series2: List[TimeSeriesElement]):
         if len(time_series1) != len(time_series2):
@@ -32,78 +26,151 @@ class PairTradingDiffCalculator(ABC):
             if time_series1[i].date_time != time_series2[i].date_time:
                 raise ValueError(f"Element {i} of time_series1 and time_series2 have different DateTime values.")
 
-        self.time_series1 = set(time_series1)
-        self.time_series2 = set(time_series2)
+        # update self.df using self.symbol1 , self.symbol2, and the given parameters
+        df1 = pd.DataFrame({
+            "date_time": [element.date_time for element in time_series1],
+            self.symbol1: [element.value for element in time_series1]
+        })
 
-        for element in time_series1:
-            self.time_series_queue1.append(element)
+        # Convert time_series2 to DataFrame
+        df2 = pd.DataFrame({
+            "date_time": [element.date_time for element in time_series2],
+            self.symbol2: [element.value for element in time_series2]
+        })
 
-        for element in time_series2:
-            self.time_series_queue2.append(element)
+        # Merge the DataFrames on date_time
+        self.df = pd.merge(df1, df2, on="date_time")
+
+        # Convert the date_time column to datetime from Timestamp
+        self.df["date_time"] = pd.to_datetime(self.df["date_time"], errors='coerce')
+
+        # Drop rows with NaN values in any of the columns
+        self.df = self.df.dropna()
+
+        # Convert the relevant columns to numeric values and find non-numeric rows
+        for symbol in [self.symbol1, self.symbol2]:
+            self.df[symbol] = pd.to_numeric(self.df[symbol], errors='coerce')
+
+        # Find and print rows with NaN values in self.symbol1 or self.symbol2
+        non_numeric_rows = self.df[self.df[[self.symbol1, self.symbol2]].isna().any(axis=1)]
+        if not non_numeric_rows.empty:
+            print("Rows with non-numeric values:")
+            print(non_numeric_rows)
+
+        # Drop rows where self.symbol1 or self.symbol2 contains NaN values
+        self.df = self.df.dropna(subset=[self.symbol1, self.symbol2])
+
+        # Optionally, reset the index of the DataFrame if needed
+        self.df = self.df.reset_index(drop=True)
+
 
     def update_time_series_element(self, time_series_elm1: TimeSeriesElement, time_series_elm2: TimeSeriesElement):
-        if not self.validate_source_data():
-            raise ValueError("Data source not valid, please execute update_time_series() first.")
-
+        """
+        单个元素更新self.df的symbol1, symbol2两列，如果符合条件，更新diff和equation列;
+        :param time_series_elm1:
+        :param time_series_elm2:
+        :return:
+        """
+        #  如果 time_series_elm1和 time_series_elm2的date_time不同，则报错。
+        # Check if date_time values are the same
         if time_series_elm1.date_time != time_series_elm2.date_time:
-            raise ValueError("time_series_elm1 and time_series_elm2 must have the same DateTime.")
+            raise ValueError(f"DateTime mismatch: {time_series_elm1.date_time} vs {time_series_elm2.date_time}")
 
-        self.time_series1.add(time_series_elm1)
-        self.time_series2.add(time_series_elm2)
+        # 根据输入值插入或者更新self.df
+        # Create a DataFrame for the new element
+        new_row = pd.DataFrame({
+            "date_time": [time_series_elm1.date_time],
+            self.symbol1: [time_series_elm1.value],
+            self.symbol2: [time_series_elm2.value]
+        })
 
-        self.time_series_queue1.append(time_series_elm1)
-        self.time_series_queue2.append(time_series_elm2)
+        # If date_time already exists in self.df, update the existing row
+        if time_series_elm1.date_time in self.df["date_time"].values:
+            self.df.update(new_row)
+        else:
+            # Append the new row to self.df
+            self.df = pd.concat([self.df, new_row], ignore_index=True)
 
-    def calculate_diff(self, end_datetime: Optional[datetime] = None) -> float:
-        if not self.validate_source_data():
-            raise ValueError("Data source not valid, please execute update_time_series() first.")
+        # Ensure 'date_time' is in datetime format
+        self.df["date_time"] = pd.to_datetime(self.df["date_time"], errors='coerce')
 
-        if end_datetime is None:
-            end_datetime = max(self.time_series1, key=lambda x: x.date_time).date_time
+        # Drop rows with NaN values in any of the columns
+        self.df = self.df.dropna()
 
-        series_a = [x.value for x in sorted(self.time_series1, key=lambda x: x.date_time, reverse=True) if
-                    x.date_time <= end_datetime][:self.FixedWindowLength]
-        series_b = [x.value for x in sorted(self.time_series2, key=lambda x: x.date_time, reverse=True) if
-                    x.date_time <= end_datetime][:self.FixedWindowLength]
+        # Convert the relevant columns to numeric values
+        self.df[self.symbol1] = pd.to_numeric(self.df[self.symbol1], errors='coerce')
+        self.df[self.symbol2] = pd.to_numeric(self.df[self.symbol2], errors='coerce')
 
-        if len(series_a) != self.FixedWindowLength or len(series_b) != self.FixedWindowLength:
-            raise ValueError("Not enough data points to perform the calculation.")
+        # Drop rows where self.symbol1 or self.symbol2 contains NaN values
+        self.df = self.df.dropna(subset=[self.symbol1, self.symbol2])
 
-        regression_result = self.ols_regression(series_a, series_b)
-        a = regression_result["a"]
-        constant = regression_result["constant"]
-        lastElmInSeriesA = series_a[0] # 注意：此时SeriesA和SeriesB为DateTime倒序;
-        lastElmInSeriesB = series_b[0] # 注意：此时SeriesA和SeriesB为DateTime倒序;
-        diff = lastElmInSeriesA - (a * lastElmInSeriesB + constant) # use the last element to calculate diff
-        return diff
+        # Sort by date_time to ensure the DataFrame is in order
+        self.df = self.df.sort_values(by="date_time").reset_index(drop=True)
 
-    def print_equation(self, end_datetime: Optional[datetime] = None) -> str:
-        if not self.validate_source_data():
-            raise ValueError("Data source not valid, please execute update_time_series() first.")
+        # Drop rows with NaN values if any
+        self.df = self.df.dropna()
 
-        if end_datetime is None:
-            end_datetime = max(self.time_series1, key=lambda x: x.date_time).date_time
+        # 如果self.df中time_series_elm1.date_time之前的记录数 >= self.FixedWindowLength，计算并更新diff和equation列;
+        if len(self.df[self.df.date_time < time_series_elm1.date_time]) >= self.FixedWindowLength:
+            # Extract the relevant series for the calculation
+            relevant_df = self.df[self.df.date_time < time_series_elm1.date_time]
+            series_a = relevant_df[self.symbol1].iloc[-self.FixedWindowLength:]
+            series_b = relevant_df[self.symbol2].iloc[-self.FixedWindowLength:]
 
-        series_a = [x.value for x in sorted(self.time_series1, key=lambda x: x.date_time, reverse=True) if
-                    x.date_time <= end_datetime][:self.FixedWindowLength]
-        series_b = [x.value for x in sorted(self.time_series2, key=lambda x: x.date_time, reverse=True) if
-                    x.date_time <= end_datetime][:self.FixedWindowLength]
+            # Perform OLS regression and update diff and equation
+            ols_result = self.ols_regression(series_a.values, series_b.values)
+            slope = ols_result["slope"]
+            intercept = ols_result["intercept"]
 
-        if len(series_a) != self.FixedWindowLength or len(series_b) != self.FixedWindowLength:
-            raise ValueError("Not enough data points to perform the calculation.")
+            # Calculate the diff for the current date_time
+            last_value_a = time_series_elm1.value
+            last_value_b = time_series_elm2.value
+            calculated_diff = last_value_a - (slope * last_value_b + intercept)
 
-        regression_result = self.ols_regression(series_a, series_b)
-        a = regression_result["a"]
-        constant = regression_result["constant"]
-        equation = f"diff = {self.symbol1} - ({float(a):.4f} * {self.symbol2} + {float(constant):.4f})"
-        return equation
+            # Update diff and equation columns
+            self.df.at[time_series_elm1.date_time, 'diff'] = calculated_diff
+            self.df.at[time_series_elm1.date_time, 'equation'] = f"{self.symbol1} - ({slope:.4f} * {self.symbol2} + {intercept:.4f})"
 
-    def validate_source_data(self) -> bool:
-        if not self.time_series1 or not self.time_series2:
-            return False
-        if len(self.time_series1) != len(self.time_series2):
-            return False
-        return True
+    def update_diff_and_equation(self):
+        """
+        在self.df都完全的前提下，根据self.FixedWindowLength更新self.df中的diff列
+        """
+        # 如果self.df中没有对应的self.symbol1, self.symbol2列，则报错.
+        if self.symbol1 not in self.df.columns or self.symbol2 not in self.df.columns:
+            raise ValueError(f"DataFrame must contain columns for {self.symbol1} and {self.symbol2}.")
+
+        # 跳过self.FixedWindowLength行
+        for i in range(1, len(self.df)):
+            if i < self.FixedWindowLength:
+                continue
+            current_datetime = self.df.index[i]
+            prev_datetime = self.df.index[i - 1]
+
+            # self.diff中，当前日期(current_datetime)向前取self.FixedWindowLength个数据点，得到seriesA，seriesB
+            window_end = i
+            window_start = i - self.FixedWindowLength
+            series_a = self.df.iloc[window_start:window_end][self.symbol1].values
+            series_b = self.df.iloc[window_start:window_end][self.symbol2].values
+
+            # 调用ols_regression(seriesA，seriesB)，得到ols_result
+            ols_result = self.ols_regression(series_a, series_b)
+            slope = ols_result["slope"]
+            intercept = ols_result["intercept"]
+
+            # 根据ols_result，循环计算: diff = y(the last) - (slope * x(the last) + intercept)
+            last_value_a = self.df.at[current_datetime, self.symbol1]
+            last_value_b = self.df.at[current_datetime, self.symbol2]
+
+            # Calculate diff
+            calculated_diff = last_value_a - (slope * last_value_b + intercept)
+
+            # 根据diff,更新对应行的diff值，并根据公式
+            self.df.at[current_datetime, 'diff'] = calculated_diff
+
+            # 根据公式: diff = A - (slope * B + intercept) 更新equation列;
+            equation = f"{last_value_a} - ({slope} * {last_value_b} + {intercept})"
+            self.df.at[current_datetime, 'equation'] = equation
+
 
     @abstractmethod
     def calculate_window_length(self, resolution_level: ResolutionLevel) -> int:
@@ -114,20 +181,120 @@ class PairTradingDiffCalculator(ABC):
         """
         pass
 
+
+
     def ols_regression(self, seriesA, seriesB):
-        # 提取SeriesA和SeriesB
+        # Convert series to numpy arrays if they are not already
         series_a = np.array(seriesA)
         series_b = np.array(seriesB)
 
-        # 在自变量中添加常数项以拟合截距
+        # Verify that series_a and series_b are not empty
+        if series_a.size == 0 or series_b.size == 0:
+            raise ValueError("seriesA and seriesB must not be empty.")
+
+        # Verify that series_a and series_b have the same length
+        if len(series_a) != len(series_b):
+            raise ValueError("seriesA and seriesB must have the same length.")
+
+        # Check for non-numeric elements
+        non_numeric_A = [x for x in series_a if not isinstance(x, (int, float))]
+        if non_numeric_A:
+            print(f"Non-numeric elements in seriesA: {non_numeric_A}")
+
+        non_numeric_B = [x for x in series_b if not isinstance(x, (int, float))]
+        if non_numeric_B:
+            print(f"Non-numeric elements in seriesB: {non_numeric_B}")
+
+        # Validate that all elements are numeric
+        if not np.issubdtype(series_a.dtype, np.number):
+            raise ValueError("seriesA must contain only numeric values.")
+        if not np.issubdtype(series_b.dtype, np.number):
+            raise ValueError("seriesB must contain only numeric values.")
+
+        # Verify seriesA and seriesB contain at least two data points
+        if len(series_a) < 2 or len(series_b) < 2:
+            raise ValueError("seriesA and seriesB must contain at least two data points for OLS regression.")
+
+        # Add a constant term for the intercept
         series_b = sm.add_constant(series_b)
 
-        # 拟合OLS模型
+        # Fit the OLS model
         model = sm.OLS(series_a, series_b)
         results = model.fit()
 
-        # 返回回归系数和截距
+        # Return the regression coefficients and intercept
         return {
-            "a": results.params[1],  # 系数
-            "constant": results.params[0]  # 截距
+            "slope": results.params[1],  # Slope
+            "intercept": results.params[0]  # Intercept
         }
+
+
+class DiffCalculatorSP500(DiffCalculator):
+
+    def __init__(self, symbol1: str, symbol2: str, resolution: ResolutionLevel = ResolutionLevel.Daily):
+        super().__init__(symbol1, symbol2, resolution)
+        self.FixedWindowLength = self.calculate_window_length(resolution)
+
+    def calculate_window_length(self, resolution_level: ResolutionLevel) -> int:
+        """
+        根据输入的级别，计算窗口的长度。
+        :param resolution_level: 分辨率级别
+        :return: 窗口长度
+        """
+        fixed_window_length = 126  # 固定窗口长度, 半年的交易日
+
+        if resolution_level == ResolutionLevel.Daily:
+            return fixed_window_length
+        elif resolution_level == ResolutionLevel.Weekly:
+            return fixed_window_length * 7
+        elif resolution_level == ResolutionLevel.Monthly:
+            return fixed_window_length * 30
+        elif resolution_level == ResolutionLevel.Hourly:
+            # 每天6.5小时
+            return int(fixed_window_length * 6.5)
+        elif resolution_level == ResolutionLevel.Minute:
+            # 每天6.5小时 * 60分钟
+            return int(fixed_window_length * 6.5 * 60)
+        elif resolution_level == ResolutionLevel.Second:
+            # 每天6.5小时 * 3600秒
+            return int(fixed_window_length * 6.5 * 3600)
+        elif resolution_level == ResolutionLevel.Tick:
+            # 每次交易的窗口长度取决于实际的实现需求，这里没有具体实现
+            raise NotImplementedError("Tick resolution is not implemented.")
+        else:
+            raise ValueError(f"Unsupported resolution level: {resolution_level}")
+
+
+class DiffCalculatorCrypto(DiffCalculator):
+    def __init__(self, symbol1: str, symbol2: str, resolution: ResolutionLevel = ResolutionLevel.Daily):
+        super().__init__(symbol1, symbol2, resolution)
+        self.FixedWindowLength = self.calculate_window_length(resolution)
+
+    def calculate_window_length(self, resolution_level: ResolutionLevel) -> int:
+        """
+        根据输入的级别，计算窗口的长度。
+        :param resolution_level: 分辨率级别
+        :return: 窗口长度
+        """
+        fixed_window_length = 183  # 固定窗口长度, 半年的交易日
+
+        if resolution_level == ResolutionLevel.Daily:
+            return fixed_window_length
+        elif resolution_level == ResolutionLevel.Weekly:
+            return fixed_window_length * 7
+        elif resolution_level == ResolutionLevel.Monthly:
+            return fixed_window_length * 30
+        elif resolution_level == ResolutionLevel.Hourly:
+            # 每天6.5小时
+            return int(fixed_window_length * 6.5)
+        elif resolution_level == ResolutionLevel.Minute:
+            # 每天6.5小时 * 60分钟
+            return int(fixed_window_length * 6.5 * 60)
+        elif resolution_level == ResolutionLevel.Second:
+            # 每天6.5小时 * 3600秒
+            return int(fixed_window_length * 6.5 * 3600)
+        elif resolution_level == ResolutionLevel.Tick:
+            # 每次交易的窗口长度取决于实际的实现需求，这里没有具体实现
+            raise NotImplementedError("Tick resolution is not implemented.")
+        else:
+            raise ValueError(f"Unsupported resolution level: {resolution_level}")

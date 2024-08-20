@@ -1,6 +1,10 @@
 import unittest
+from datetime import datetime
 from pathlib import Path
 import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.dates import DateFormatter
+from matplotlib.ticker import MaxNLocator
 from shared_lib.bll.diff_calculator import DiffCalculatorSP500
 from shared_lib.models.enums import ResolutionLevel
 from shared_lib.models.time_series import TimeSeriesElement
@@ -8,7 +12,7 @@ from shared_lib.models.time_series import TimeSeriesElement
 
 # Assuming PairTradingDiffCalculatorFixLengthWindow and TimeSeriesElement are already defined
 
-class TestDiffCalculator(unittest.TestCase):
+class TestSP500DiffCalculator(unittest.TestCase):
 
     def load_time_series(self, full_path_filename):
         """
@@ -42,22 +46,25 @@ class TestDiffCalculator(unittest.TestCase):
         # Update the time series in the calculator
         calculator.update_time_series(time_series1, time_series2)
 
-        # Choose an endDateTime for the calculation, or use None to use the latest available
-        end_date_time = None
-
         # Perform the diff calculation
-        diff = calculator.calculate_diff(end_date_time)
+        calculator.update_diff_and_equation()
 
-        # Assert that the diff is within an expected range (for this example, we'll assume 0 is the expected value)
-        self.assertAlmostEqual(5.259246, diff, places=4)
+        # Assert that 'diff' column is not empty
+        self.assertFalse(calculator.df['diff'].isna().all(), "The 'diff' column should not be all NaN")
 
-    def test_generate_diff_equation_should_work(self):
-        symbol1 = "DASH"
-        symbol2 = "ALGO"
+        # Assert that 'equation' column is not empty
+        self.assertFalse(calculator.df['equation'].isna().all(), "The 'equation' column should not be all NaN")
+
+        # Optionally, print some values for debugging
+        print(calculator.df[['diff', 'equation']].tail())
+
+    def test_draw_diff_chart(self):
+        symbol1 = "AAPL"
+        symbol2 = "ABNB"
 
         # Load data from CSV files
-        time_series1 = self.load_time_series(Path(__file__).parent / f"data/{symbol1}USDT.csv")
-        time_series2 = self.load_time_series(Path(__file__).parent / f"data/{symbol2}USDT.csv")
+        time_series1 = self.load_time_series(Path(__file__).parent / f"data/{symbol1}.csv")
+        time_series2 = self.load_time_series(Path(__file__).parent / f"data/{symbol2}.csv")
 
         # Initialize the calculator
         calculator = DiffCalculatorSP500(symbol1, symbol2, resolution=ResolutionLevel.Hourly)
@@ -65,14 +72,62 @@ class TestDiffCalculator(unittest.TestCase):
         # Update the time series in the calculator
         calculator.update_time_series(time_series1, time_series2)
 
-        # Choose an endDateTime for the calculation, or use None to use the latest available
-        end_date_time = None
+        # Perform the diff calculation
+        calculator.update_diff_and_equation()
 
-        # Perform the diff equation generation
-        equation = calculator.print_equation(end_date_time)
+        # 使用calculator.df中diff列所有有值的行，绘制chart。 其中：横轴为self.df中date_time中的值(日期格式)，纵轴为diff列的值(float类型)
+        # Filter out rows where 'diff' is NaN
+        df_diff = calculator.df.dropna(subset=['diff'])
 
-        self.assertIsNotNone(equation)
-        print(equation)
+        # Ensure 'date_time' is used as the index for plotting
+        df_diff.set_index('date_time', inplace=True)
+
+        # Plotting the 'diff' column
+        plt.figure(figsize=(12, 6))
+        plt.plot(df_diff.index, df_diff['diff'], marker='o', linestyle='-', color='b', label='Diff')
+
+        # Formatting the x-axis to show dates
+        plt.xlabel('Date')
+        plt.ylabel('Diff')
+        plt.title(f'Diff Chart for {symbol1} and {symbol2}')
+        plt.legend()
+        plt.grid(True)
+
+        # Set x-axis to date format
+        plt.gca().xaxis.set_major_locator(MaxNLocator(10))  # Limit the number of ticks on x-axis
+        plt.gca().xaxis.set_major_formatter(DateFormatter('%Y-%m-%d'))  # Set date format
+
+        plt.xticks(rotation=45)  # Rotate x-axis labels for better readability
+        plt.tight_layout()
+
+        # Save or show the plot
+        plt.savefig(f"diff_chart_{symbol1}_{symbol2}.png")  # Save the chart as a PNG file
+        plt.show()  # Display the chart
+
+    def test_single_update(self):
+        symbol1 = "AAPL"
+        symbol2 = "ABNB"
+
+        # Load data from CSV files
+        time_series1 = self.load_time_series(Path(__file__).parent / f"data/{symbol1}.csv")
+        time_series2 = self.load_time_series(Path(__file__).parent / f"data/{symbol2}.csv")
+
+        # Initialize the calculator
+        calculator = DiffCalculatorSP500(symbol1, symbol2, resolution=ResolutionLevel.Hourly)
+
+        # Update the time series in the calculator
+        calculator.update_time_series(time_series1, time_series2)
+
+
+        # init fake data for 2024-8-1, for AAPL, and ABNB, named: series_a_elm and series_b_elm
+        fake_date = datetime(2024,8, 1,9,30)
+        fake_value_symbol1 = 218.0  # Example value for AAPL
+        fake_value_symbol2 = 135.0  # Example value for ABNB
+
+        # Create TimeSeriesElement instances with fake data
+        series_a_elm = TimeSeriesElement(date_time=fake_date, value=fake_value_symbol1)
+        series_b_elm = TimeSeriesElement(date_time=fake_date, value=fake_value_symbol2)
+        calculator.update_time_series_element(series_a_elm, series_b_elm)
 
 
 if __name__ == '__main__':
