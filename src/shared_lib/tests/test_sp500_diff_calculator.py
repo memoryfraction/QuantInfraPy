@@ -118,9 +118,8 @@ class TestSP500DiffCalculator(unittest.TestCase):
         # Update the time series in the calculator
         calculator.update_time_series(time_series1, time_series2)
 
-
         # init fake data for 2024-8-1, for AAPL, and ABNB, named: series_a_elm and series_b_elm
-        fake_date = datetime(2024,8, 1,9,30)
+        fake_date = datetime(2024, 8, 1, 9, 30)
         fake_value_symbol1 = 218.0  # Example value for AAPL
         fake_value_symbol2 = 135.0  # Example value for ABNB
 
@@ -128,6 +127,9 @@ class TestSP500DiffCalculator(unittest.TestCase):
         series_a_elm = TimeSeriesElement(date_time=fake_date, value=fake_value_symbol1)
         series_b_elm = TimeSeriesElement(date_time=fake_date, value=fake_value_symbol2)
         calculator.update_time_series_element(series_a_elm, series_b_elm)
+
+        # Optionally, print some values for debugging
+        print(calculator.df.tail())
 
 
 if __name__ == '__main__':

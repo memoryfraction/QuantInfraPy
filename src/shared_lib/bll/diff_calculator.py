@@ -60,8 +60,8 @@ class DiffCalculator(ABC):
         # Drop rows where self.symbol1 or self.symbol2 contains NaN values
         self.df = self.df.dropna(subset=[self.symbol1, self.symbol2])
 
-        # Optionally, reset the index of the DataFrame if needed
-        self.df = self.df.reset_index(drop=True)
+        # Set the 'date_time' column as the index
+        self.df.set_index('date_time', inplace=True)
 
 
     def update_time_series_element(self, time_series_elm1: TimeSeriesElement, time_series_elm2: TimeSeriesElement):
@@ -84,36 +84,26 @@ class DiffCalculator(ABC):
             self.symbol2: [time_series_elm2.value]
         })
 
-        # If date_time already exists in self.df, update the existing row
-        if time_series_elm1.date_time in self.df["date_time"].values:
-            self.df.update(new_row)
+        #  date_time is index,  If date_time already exists in self.df, update the existing row
+        # Set 'date_time' as the index for the new row
+        new_row.set_index('date_time', inplace=True)
+
+        # Check if the date_time already exists in self.df
+        if time_series_elm1.date_time in self.df.index:
+            # Update the existing row
+            self.df.loc[time_series_elm1.date_time, [self.symbol1, self.symbol2]] = new_row.loc[
+                time_series_elm1.date_time, [self.symbol1, self.symbol2]]
         else:
-            # Append the new row to self.df
-            self.df = pd.concat([self.df, new_row], ignore_index=True)
-
-        # Ensure 'date_time' is in datetime format
-        self.df["date_time"] = pd.to_datetime(self.df["date_time"], errors='coerce')
-
-        # Drop rows with NaN values in any of the columns
-        self.df = self.df.dropna()
-
-        # Convert the relevant columns to numeric values
-        self.df[self.symbol1] = pd.to_numeric(self.df[self.symbol1], errors='coerce')
-        self.df[self.symbol2] = pd.to_numeric(self.df[self.symbol2], errors='coerce')
-
-        # Drop rows where self.symbol1 or self.symbol2 contains NaN values
-        self.df = self.df.dropna(subset=[self.symbol1, self.symbol2])
-
-        # Sort by date_time to ensure the DataFrame is in order
-        self.df = self.df.sort_values(by="date_time").reset_index(drop=True)
+            # Append the new row to the DataFrame
+            self.df = pd.concat([self.df, new_row])
 
         # Drop rows with NaN values if any
         self.df = self.df.dropna()
 
         # 如果self.df中time_series_elm1.date_time之前的记录数 >= self.FixedWindowLength，计算并更新diff和equation列;
-        if len(self.df[self.df.date_time < time_series_elm1.date_time]) >= self.FixedWindowLength:
+        if len(self.df[self.df.index < time_series_elm1.date_time]) >= self.FixedWindowLength:
             # Extract the relevant series for the calculation
-            relevant_df = self.df[self.df.date_time < time_series_elm1.date_time]
+            relevant_df = self.df[self.df.index < time_series_elm1.date_time]
             series_a = relevant_df[self.symbol1].iloc[-self.FixedWindowLength:]
             series_b = relevant_df[self.symbol2].iloc[-self.FixedWindowLength:]
 
@@ -129,7 +119,7 @@ class DiffCalculator(ABC):
 
             # Update diff and equation columns
             self.df.at[time_series_elm1.date_time, 'diff'] = calculated_diff
-            self.df.at[time_series_elm1.date_time, 'equation'] = f"{self.symbol1} - ({slope:.4f} * {self.symbol2} + {intercept:.4f})"
+            self.df.at[time_series_elm1.date_time, 'equation'] = f"diff = {self.symbol1} - ({slope:.4f} * {self.symbol2} + {intercept:.4f})"
 
     def update_diff_and_equation(self):
         """
