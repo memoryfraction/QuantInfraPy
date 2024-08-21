@@ -101,25 +101,30 @@ class DiffCalculator(ABC):
         self.df = self.df.dropna()
 
         # 如果self.df中time_series_elm1.date_time之前的记录数 >= self.FixedWindowLength，计算并更新diff和equation列;
-        if len(self.df[self.df.index < time_series_elm1.date_time]) >= self.FixedWindowLength:
-            # Extract the relevant series for the calculation
-            relevant_df = self.df[self.df.index < time_series_elm1.date_time]
-            series_a = relevant_df[self.symbol1].iloc[-self.FixedWindowLength:]
-            series_b = relevant_df[self.symbol2].iloc[-self.FixedWindowLength:]
+        if ('diff' not in self.df.columns
+                or 'equation' not in self.df.columns
+                or time_series_elm1.date_time not in self.df.index
+                or pd.isna(self.df.at[time_series_elm1.date_time, 'diff'])
+                or pd.isna(self.df.at[time_series_elm1.date_time, 'equation'])):
+            if len(self.df[self.df.index < time_series_elm1.date_time]) >= self.FixedWindowLength:
+                # Extract the relevant series for the calculation
+                relevant_df = self.df[self.df.index < time_series_elm1.date_time]
+                series_a = relevant_df[self.symbol1].iloc[-self.FixedWindowLength:]
+                series_b = relevant_df[self.symbol2].iloc[-self.FixedWindowLength:]
 
-            # Perform OLS regression and update diff and equation
-            ols_result = self.ols_regression(series_a.values, series_b.values)
-            slope = ols_result["slope"]
-            intercept = ols_result["intercept"]
+                # Perform OLS regression and update diff and equation
+                ols_result = self.ols_regression(series_a.values, series_b.values)
+                slope = ols_result["slope"]
+                intercept = ols_result["intercept"]
 
-            # Calculate the diff for the current date_time
-            last_value_a = time_series_elm1.value
-            last_value_b = time_series_elm2.value
-            calculated_diff = last_value_a - (slope * last_value_b + intercept)
+                # Calculate the diff for the current date_time
+                last_value_a = time_series_elm1.value
+                last_value_b = time_series_elm2.value
+                calculated_diff = last_value_a - (slope * last_value_b + intercept)
 
-            # Update diff and equation columns
-            self.df.at[time_series_elm1.date_time, 'diff'] = calculated_diff
-            self.df.at[time_series_elm1.date_time, 'equation'] = f"diff = {self.symbol1} - ({slope:.4f} * {self.symbol2} + {intercept:.4f})"
+                # Update diff and equation columns
+                self.df.at[time_series_elm1.date_time, 'diff'] = calculated_diff
+                self.df.at[time_series_elm1.date_time, 'equation'] = f"diff = {self.symbol1} - ({slope:.4f} * {self.symbol2} + {intercept:.4f})"
 
     def update_diff_and_equation(self):
         """
