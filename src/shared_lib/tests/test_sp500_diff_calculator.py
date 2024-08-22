@@ -1,14 +1,12 @@
 import unittest
-from datetime import datetime
 from pathlib import Path
 import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.dates import DateFormatter
 from matplotlib.ticker import MaxNLocator
-from shared_lib.bll.diff_calculator import DiffCalculatorSP500
-from shared_lib.models.enums import ResolutionLevel
-from shared_lib.models.time_series import TimeSeriesElement
-
+from src.shared_lib.bll.diff_calculator import DiffCalculatorSP500
+from src.shared_lib.models.enums import ResolutionLevel
+from src.shared_lib.models.time_series import *
 
 # Assuming PairTradingDiffCalculatorFixLengthWindow and TimeSeriesElement are already defined
 

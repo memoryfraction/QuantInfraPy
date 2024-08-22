@@ -4,8 +4,8 @@ import pandas as pd
 import statsmodels.api as sm
 import numpy as np
 from pandas import DataFrame
-from shared_lib.models.enums import ResolutionLevel
-from shared_lib.models.time_series import TimeSeriesElement
+from src.shared_lib.models.enums import *
+from src.shared_lib.models.time_series import *
 
 
 # Assuming TimeSeriesElement and ResolutionLevel are already defined
@@ -152,6 +152,9 @@ class DiffCalculator(ABC):
             slope = ols_result["slope"]
             intercept = ols_result["intercept"]
 
+            self.df.at[current_datetime, 'slope'] = slope
+            self.df.at[current_datetime, 'intercept'] = intercept
+
             # 根据ols_result，循环计算: diff = y(the last) - (slope * x(the last) + intercept)
             last_value_a = self.df.at[current_datetime, self.symbol1]
             last_value_b = self.df.at[current_datetime, self.symbol2]
@@ -165,6 +168,8 @@ class DiffCalculator(ABC):
             # 根据公式: diff = A - (slope * B + intercept) 更新equation列;
             equation = f"{last_value_a} - ({slope} * {last_value_b} + {intercept})"
             self.df.at[current_datetime, 'equation'] = equation
+
+
 
 
     @abstractmethod
