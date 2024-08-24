@@ -73,14 +73,10 @@ class TestSP500DiffCalculator(unittest.TestCase):
         # Perform the diff calculation
         calculator.update_diff_and_equation()
 
-        # 使用calculator.df中diff列所有有值的行，绘制chart。 其中：横轴为self.df中date_time中的值(日期格式)，纵轴为diff列的值(float类型)
-        # Filter out rows where 'diff' is NaN
+        # Ensure 'date_time' is present in the DataFrame
         df_diff = calculator.df.dropna(subset=['diff'])
 
-        # Ensure 'date_time' is used as the index for plotting
-        df_diff.set_index('date_time', inplace=True)
-
-        # Plotting the 'diff' column
+        # Use the index (which contains date_time) for plotting
         plt.figure(figsize=(12, 6))
         plt.plot(df_diff.index, df_diff['diff'], marker='o', linestyle='-', color='b', label='Diff')
 
@@ -101,6 +97,7 @@ class TestSP500DiffCalculator(unittest.TestCase):
         # Save or show the plot
         plt.savefig(f"diff_chart_{symbol1}_{symbol2}.png")  # Save the chart as a PNG file
         plt.show()  # Display the chart
+
 
     def test_single_update(self):
         symbol1 = "AAPL"

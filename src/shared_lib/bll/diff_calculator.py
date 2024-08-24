@@ -63,7 +63,6 @@ class DiffCalculator(ABC):
         # Set the 'date_time' column as the index
         self.df.set_index('date_time', inplace=True)
 
-
     def update_time_series_element(self, time_series_elm1: TimeSeriesElement, time_series_elm2: TimeSeriesElement):
         """
         单个元素更新self.df的symbol1, symbol2两列，如果符合条件，更新diff和equation列;
@@ -170,8 +169,6 @@ class DiffCalculator(ABC):
             self.df.at[current_datetime, 'equation'] = equation
 
 
-
-
     @abstractmethod
     def calculate_window_length(self, resolution_level: ResolutionLevel) -> int:
         """
@@ -180,8 +177,6 @@ class DiffCalculator(ABC):
         :return:
         """
         pass
-
-
 
     def ols_regression(self, seriesA, seriesB):
         # Convert series to numpy arrays if they are not already
@@ -285,16 +280,17 @@ class DiffCalculatorCrypto(DiffCalculator):
         elif resolution_level == ResolutionLevel.Monthly:
             return fixed_window_length * 30
         elif resolution_level == ResolutionLevel.Hourly:
-            # 每天6.5小时
-            return int(fixed_window_length * 6.5)
+            # 加密货币市场每天24小时交易
+            return fixed_window_length * 24
         elif resolution_level == ResolutionLevel.Minute:
-            # 每天6.5小时 * 60分钟
-            return int(fixed_window_length * 6.5 * 60)
+            # 每天24小时 * 60分钟
+            return fixed_window_length * 24 * 60
         elif resolution_level == ResolutionLevel.Second:
-            # 每天6.5小时 * 3600秒
-            return int(fixed_window_length * 6.5 * 3600)
+            # 每天24小时 * 3600秒
+            return fixed_window_length * 24 * 3600
         elif resolution_level == ResolutionLevel.Tick:
             # 每次交易的窗口长度取决于实际的实现需求，这里没有具体实现
             raise NotImplementedError("Tick resolution is not implemented.")
         else:
             raise ValueError(f"Unsupported resolution level: {resolution_level}")
+
